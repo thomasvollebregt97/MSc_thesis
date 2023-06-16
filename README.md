@@ -1,12 +1,10 @@
 # MSc_thesis
-All code to reproduce results for my thesis for MSc Econometrics. This repository contains several files and folders. Each file has a short description of its functionality.
+All code to reproduce results for my thesis for MSc Econometrics. This repository contains several files and folders. Each file has a short description of its functionality. Important: the source file with all data for all European countries was too big to upload to github. Therefore I have only uploaded the log-returns. I can send the source file on request via wetransfer.
 
 ### R ###
 R is used to model the electricity price data with the conditional volatility models, ARCH, GARCH, E-GARCH, GJR-GARCH and MS-GARCH. The main reason to exploit R is the library called MS-GARCH is implemented in R and not in python.
 
 EP_GARCH_models_nstep.R:
-
-
 
 ### Python ###
 Python is used for its extensive library's for neural network modeling such as Keras and TensorFlow. Our study uses the TensorFlow library that allows for more flexibility than the Keras library.
