@@ -1,8 +1,19 @@
 # MSc_thesis
-All code to reproduce results for my thesis for MSc Econometrics. This repository contains several files and folders. Each file has a short description of its functionality. Important: the source file with all data for all European countries was too big to upload to github. Therefore I have only uploaded the log-returns. I can send the source file on request via wetransfer.
+This repository contains all code and data to reproduce results for my thesis for MSc Econometrics. Each file has a short description of its functionality. Important: the source file with all data for all European countries was too big to upload to github. Therefore I have only uploaded the log-returns. I can send the source file on request via WeTransfer.
+
+# Data preparation
+
+# 1. Electricity price dataset
+Contains all data needede for this research. 
+
+# 2. GARCH modeling
+R is used to model the electricity price data with the conditional volatility models, ARCH, GARCH, E-GARCH, GJR-GARCH and MS-GARCH. The main reason is the library called MS-GARCH which is implemented in R and not in python. R has extensive libraries on conditional volatility models useful for this thesis.
+
+# 3. Figures
+
+# 4. LSTM predictions
 
 ### R ###
-R is used to model the electricity price data with the conditional volatility models, ARCH, GARCH, E-GARCH, GJR-GARCH and MS-GARCH. The main reason to exploit R is the library called MS-GARCH is implemented in R and not in python.
 
 EP_GARCH_models_nstep.R:
 
