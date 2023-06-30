@@ -7,6 +7,7 @@ from sklearn.metrics import mean_squared_error
 from matplotlib import pyplot
 from keras.models import Sequential
 from keras.layers import Dense
+from keras.layers import Dropout
 from keras.layers import Flatten
 from keras.layers import LSTM
 from sklearn.metrics import mean_absolute_error as mae
@@ -14,7 +15,7 @@ from sklearn.metrics import mean_squared_error as mse
 from scipy.stats import t
 import collections
 from keras.optimizers import Adam
-
+from tensorflow.keras.callbacks import EarlyStopping
 
 ############################################################# Functions for LSTM modeling #############################################################
 
@@ -119,6 +120,46 @@ def test_batch(scaled_rv, obs_test_total, d):
 
     return rv_test_3D
 
+"""def lstm_model(X_3D, y_3D, verbose, epochs, d, units, nodes, LR, activation_lstm): without early stopping
+    
+    This function defines, compiles, and fits an LSTM model on the provided data.
+
+    Arguments:
+    X_3D -- 3D numpy array, the input data for the LSTM model. The first dimension is the sample index, the second dimension is the time step, and the third dimension is the feature.
+    y_3D -- 2D numpy array, the target output data for the LSTM model. The first dimension is the sample index and the second dimension is the time step.
+    verbose -- int, whether to print detailed information during the model training. 0 means silent, 1 means progress bar, and 2 means one line per epoch.
+    epochs -- int, the number of epochs to train the model.
+    d -- int, the batch size for the model training.
+    units -- int, the number of LSTM units.
+    nodes -- int, the number of nodes in the dense layer of the LSTM model.
+    LR -- float, the learning rate of the LSTM model
+    activation_lstm -- str, allows you to modify the activation function of the LSTM layer
+    dropout_rate -- float, the rate of dropout.
+
+    Returns:
+    model -- Sequential, the trained LSTM model.
+    
+
+    # Define parameters
+    verbose, epochs, batch_size = verbose, epochs, d
+    n_timesteps, n_features, n_outputs = X_3D.shape[1], X_3D.shape[2], y_3D.shape[1]
+
+    # Define model
+    model = Sequential()
+    model.add(LSTM(units, activation=activation_lstm, input_shape=(n_timesteps, n_features))) # LSTM units
+    #model.add(Dropout(dropout_rate))  # Dropout layer
+    model.add(Dense(nodes, activation='relu')) # nodes
+    model.add(Dense(n_outputs))
+    model.compile(loss='mse', optimizer='adam')
+
+    # Define a custom Adam optimizer with a learning rate of LR
+    custom_adam = Adam(learning_rate = LR)
+
+    # fit network
+    model.fit(X_3D, y_3D, epochs=epochs, batch_size=batch_size, verbose=verbose)
+
+    return model"""
+
 def lstm_model(X_3D, y_3D, verbose, epochs, d, units, nodes, LR, activation_lstm):
     """
     This function defines, compiles, and fits an LSTM model on the provided data.
@@ -133,6 +174,7 @@ def lstm_model(X_3D, y_3D, verbose, epochs, d, units, nodes, LR, activation_lstm
     nodes -- int, the number of nodes in the dense layer of the LSTM model.
     LR -- float, the learning rate of the LSTM model
     activation_lstm -- str, allows you to modify the activation function of the LSTM layer
+    dropout_rate -- float, the rate of dropout.
 
     Returns:
     model -- Sequential, the trained LSTM model.
@@ -145,17 +187,22 @@ def lstm_model(X_3D, y_3D, verbose, epochs, d, units, nodes, LR, activation_lstm
     # Define model
     model = Sequential()
     model.add(LSTM(units, activation=activation_lstm, input_shape=(n_timesteps, n_features))) # LSTM units
+    #model.add(Dropout(dropout_rate))  # Dropout layer
     model.add(Dense(nodes, activation='relu')) # nodes
-    model.add(Dense(n_outputs))
+    model.add(Dense(n_outputs, activation='relu'))
     model.compile(loss='mse', optimizer='adam')
 
     # Define a custom Adam optimizer with a learning rate of LR
     custom_adam = Adam(learning_rate = LR)
 
+    # Define EarlyStopping callback
+    #early_stopping = EarlyStopping(monitor='loss', patience=5, min_delta=0.0001)
+
     # fit network
     model.fit(X_3D, y_3D, epochs=epochs, batch_size=batch_size, verbose=verbose)
 
     return model
+
 
 def generate_2_forecasts(rv, model_1, model_2, rv_test_3D_1, rv_test_3D_2, obs_test, d):
     """
@@ -703,6 +750,73 @@ def dm_test_2(real_values, pred1, pred2, h=1, harvey_adj=True):
     for real, p1, p2 in zip(real_values, pred1, pred2):
         e1_lst.append((real - p1)**2)
         e2_lst.append((real - p2)**2)
+    for e1, e2 in zip(e1_lst, e2_lst):
+        d_lst.append(e1 - e2)
+
+    # Mean of loss differential
+    mean_d = pd.Series(d_lst).mean()
+
+    # Calculate autocovariance 
+    def autocovariance(Xi, N, k, Xs):
+        autoCov = 0
+        T = float(N)
+        for i in np.arange(0, N-k):
+            autoCov += ((Xi[i+k])-Xs)*(Xi[i]-Xs)
+        return (1/(T))*autoCov
+    
+    # Calculate the denominator of DM stat
+    gamma = []
+    for lag in range(0, h):
+        gamma.append(autocovariance(d_lst, len(d_lst), lag, mean_d))  # 0, 1, 2
+    V_d = (gamma[0] + 2*sum(gamma[1:]))/T
+    
+    # Calculate DM stat
+    DM_stat = V_d**(-0.5)*mean_d
+
+    # Calculate and apply Harvey adjustement
+    # It applies a correction for small sample
+    if harvey_adj is True:
+        harvey_adj = ((T+1-2*h+h*(h-1)/T)/T)**(0.5)
+        DM_stat = harvey_adj*DM_stat 
+
+    # Calculate p-value
+    p_value = 2*t.cdf(-abs(DM_stat), df=T - 1)
+
+    dm_return = collections.namedtuple('dm_return', 'DM p_value')
+    result = dm_return(DM=DM_stat, p_value=p_value)
+
+    return result
+
+def dm_test_2_mae(real_values, pred1, pred2, h=1, harvey_adj=True):
+    """
+    Implements the Diebold-Mariano (DM) test to compare the accuracy of two sets of predictions.
+
+    Parameters:
+    real_values (list): A list of actual (observed) values.
+    pred1 (list): A list of the first set of predicted values.
+    pred2 (list): A list of the second set of predicted values.
+    h (int, optional): The forecast horizon. Defaults to 1.
+    harvey_adj (bool, optional): Whether to apply Harvey's adjustment for small samples. Defaults to True.
+
+    Returns:
+    result (namedtuple): A namedtuple with two fields: 'DM' and 'p_value'. 'DM' is the DM test statistic, and 'p_value' is the associated p-value of the test.
+    """
+
+    e1_lst = []
+    e2_lst = []
+    d_lst = []
+
+    real_values = pd.Series(real_values).apply(lambda x: float(x)).tolist()
+    pred1 = pd.Series(pred1).apply(lambda x: float(x)).tolist()
+    pred2 = pd.Series(pred2).apply(lambda x: float(x)).tolist()
+
+    # Length of forecasts
+    T = float(len(real_values))
+
+    # Construct loss differential according to error criterion (MAE)
+    for real, p1, p2 in zip(real_values, pred1, pred2):
+        e1_lst.append(np.sqrt((real - p1)**2))
+        e2_lst.append(np.sqrt((real - p2)**2))
     for e1, e2 in zip(e1_lst, e2_lst):
         d_lst.append(e1 - e2)
 
